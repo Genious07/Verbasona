@@ -20,4 +20,5 @@ export interface SessionData {
   talkListenRatio: TalkListenRatio;
   interruptions: InterruptionCount;
   analysis: string;
+  transcription: string;
 }

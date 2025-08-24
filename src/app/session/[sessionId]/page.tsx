@@ -38,6 +38,7 @@ export default function SessionPage() {
           talkListenRatio: { user: 0, others: 0 },
           interruptions: { user: 0, others: 0 },
           analysis: '',
+          transcription: '',
         };
         await set(sessionRef, initialData);
       }
@@ -63,6 +64,7 @@ export default function SessionPage() {
           talkListenRatio: { user: 0, others: 0 },
           interruptions: { user: 0, others: 0 },
           analysis: 'Error connecting to session.',
+          transcription: '',
         });
         setIsInitializing(false);
       }
@@ -90,8 +92,26 @@ export default function SessionPage() {
       return <QrCodeDisplay url={mobileUrl} />;
     }
 
-    if (!sessionData.isRecording) {
-      return (
+    if (sessionData.isRecording) {
+        return <Dashboard data={sessionData} />;
+    }
+
+    // After a session is stopped, show the final dashboard.
+    if (sessionData.isRecording === false && sessionData.emotionHistory && sessionData.emotionHistory.length > 0) {
+        return (
+            <Card className="w-full max-w-4xl mx-auto animate-in fade-in duration-500">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl font-headline">Session Ended</CardTitle>
+                <CardDescription>You can review your final results below.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                 <Dashboard data={sessionData} />
+              </CardContent>
+            </Card>
+        )
+    }
+
+    return (
         <Card className="w-full max-w-md mx-auto animate-in fade-in duration-500">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-headline">Device Linked!</CardTitle>
@@ -102,24 +122,6 @@ export default function SessionPage() {
           </CardContent>
         </Card>
       );
-    }
-
-    // After a session is stopped, show the final dashboard.
-    if (sessionData.isRecording === false && sessionData.emotionHistory.length > 0) {
-        return (
-            <Card className="w-full max-w-4xl mx-auto animate-in fade-in duration-500">
-              <CardHeader className="text-center">
-                <CardTitle className="text-2xl font-headline">Session Ended</CardTitle>
-                <CardDescription>You can review your final results below.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                 <Dashboard data={sessionData} />
-              </CardContent>
-            </Card>
-        )
-    }
-
-    return <Dashboard data={sessionData} />;
   };
 
   return (

@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { analyzeEmotion } from '@/ai/flows/emotion-analysis';
 import { calculateTalkListenRatio } from '@/ai/flows/talk-listen-ratio';
 import { analyzeInterruptions } from '@/ai/flows/interruption-analysis';
+import { transcribeAudio } from '@/ai/flows/transcription';
 
 
 export default function MobilePage() {
@@ -45,6 +46,26 @@ export default function MobilePage() {
     }
   }, [sessionId]);
 
+  const stopRecording = useCallback(async () => {
+    setIsRecording(false);
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+    }
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+
+    if (sessionRef.current) {
+      try {
+        await update(sessionRef.current, { isRecording: false });
+      } catch (error) {
+        console.error('Failed to update session data on stop', error);
+      }
+    }
+  }, []);
+
   const processAudioChunk = useCallback(async () => {
     if (audioChunksRef.current.length === 0 || !sessionRef.current) return;
     setIsProcessing(true);
@@ -67,7 +88,7 @@ export default function MobilePage() {
         const currentData: SessionData = snapshot.val();
 
         // Run AI analyses in parallel
-        const [emotionResult, talkListenResult, interruptionResult] = await Promise.all([
+        const [emotionResult, talkListenResult, interruptionResult, transcriptionResult] = await Promise.all([
           analyzeEmotion({ audioDataUri: base64Audio }),
           calculateTalkListenRatio({ conversationAudioDataUri: base64Audio, speakerDiarizationData: '' }), // Diarization is mocked for now
           analyzeInterruptions({ // This will be based on mock data for now
@@ -76,14 +97,15 @@ export default function MobilePage() {
             totalSpeakingTime: currentData.talkListenRatio.user + currentData.talkListenRatio.others,
             userInterruptionCount: currentData.interruptions.user,
             otherInterruptionCount: currentData.interruptions.others
-          })
+          }),
+          transcribeAudio({ audioDataUri: base64Audio })
         ]);
 
         // Update emotion history
         const newEmotionHistory = [
           ...(currentData.emotionHistory || []),
           {
-            time: (currentData.emotionHistory.length + 1) * 5, // Assuming 5s chunks
+            time: ((currentData.emotionHistory?.length || 0) + 1) * 5, // Assuming 5s chunks
             emotionalTemperature: emotionResult.emotionalTemperature as any,
           },
         ];
@@ -97,11 +119,14 @@ export default function MobilePage() {
         const newUserInterruptions = currentData.interruptions.user + (Math.random() < 0.05 ? 1 : 0);
         const newOthersInterruptions = currentData.interruptions.others + (Math.random() < 0.03 ? 1 : 0);
 
+        const newTranscription = `${currentData.transcription || ''} ${transcriptionResult.transcription}`.trim();
+
         const updates: Partial<SessionData> = {
           emotionHistory: newEmotionHistory,
           talkListenRatio: { user: newUserTalkTime, others: newOthersTalkTime },
           interruptions: { user: newUserInterruptions, others: newOthersInterruptions },
           analysis: interruptionResult.interruptionAnalysis, // Use the latest analysis
+          transcription: newTranscription,
         };
 
         await update(sessionRef.current!, updates);
@@ -116,7 +141,7 @@ export default function MobilePage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [toast]);
+  }, [toast, stopRecording]);
 
   const startRecording = useCallback(async () => {
     if (!sessionRef.current) return;
@@ -142,6 +167,7 @@ export default function MobilePage() {
         talkListenRatio: { user: 0, others: 0 },
         interruptions: { user: 0, others: 0 },
         analysis: 'Starting analysis... Speak into your device.',
+        transcription: '',
       };
       await update(sessionRef.current, initialData);
 
@@ -158,29 +184,6 @@ export default function MobilePage() {
       });
     }
   }, [processAudioChunk, toast]);
-
-  const stopRecording = useCallback(async () => {
-    setIsRecording(false);
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current);
-    }
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    }
-
-    // Process any remaining audio
-    await processAudioChunk();
-
-    if (sessionRef.current) {
-      try {
-        await update(sessionRef.current, { isRecording: false });
-      } catch (error) {
-        console.error('Failed to update session data on stop', error);
-      }
-    }
-  }, [processAudioChunk]);
 
   useEffect(() => {
     // Cleanup on unmount
