@@ -14,6 +14,7 @@ import {z} from 'genkit';
 const InterruptionAnalysisInputSchema = z.object({
   conversationText: z
     .string()
+    .optional()
     .describe('The full conversation text to analyze.'),
   userSpeakingTime: z
     .number()
@@ -24,8 +25,9 @@ const InterruptionAnalysisInputSchema = z.object({
   userInterruptionCount: z
     .number()
     .describe('The number of times the user interrupted others.'),
-  otherInterruptionCount:
-    z.number().describe('The number of times the user was interrupted by others.'),
+  otherInterruptionCount: z
+    .number()
+    .describe('The number of times the user was interrupted by others.'),
 });
 export type InterruptionAnalysisInput = z.infer<typeof InterruptionAnalysisInputSchema>;
 
@@ -48,16 +50,15 @@ const prompt = ai.definePrompt({
   name: 'interruptionAnalysisPrompt',
   input: {schema: InterruptionAnalysisInputSchema},
   output: {schema: InterruptionAnalysisOutputSchema},
-  prompt: `You are an expert communication analyst. Analyze the following conversation data to determine the user's interruption patterns and suggest improvements.
+  prompt: `You are an expert communication analyst. Based on the cumulative data below, provide a concise, actionable suggestion for the user.
 
-Conversation Text: {{{conversationText}}}
-User Speaking Time: {{{userSpeakingTime}}} seconds
-Total Speaking Time: {{{totalSpeakingTime}}} seconds
-User Interruption Count: {{{userInterruptionCount}}}
-Other Interruption Count: {{{otherInterruptionCount}}}
+  - User Speaking Time: a total of {{{userSpeakingTime}}} seconds
+  - Total Speaking Time for Everyone: {{{totalSpeakingTime}}} seconds
+  - Times User Interrupted Others: {{{userInterruptionCount}}}
+  - Times User Was Interrupted: {{{otherInterruptionCount}}}
 
-Analyze the data and provide a concise analysis of the user's interruption behavior, comparing how often the user interrupts others versus being interrupted. Include specific suggestions for improving their communication style based on this analysis.
-`,
+  Analyze the data and provide a single, insightful tip to help the user improve their communication style. Focus on the most significant pattern you see. For example, if they interrupt a lot, give a tip on that. If they get interrupted, give a tip for that. If the balance is good, provide positive reinforcement.
+  `,
 });
 
 const interruptionAnalysisFlow = ai.defineFlow(
@@ -67,6 +68,11 @@ const interruptionAnalysisFlow = ai.defineFlow(
     outputSchema: InterruptionAnalysisOutputSchema,
   },
   async input => {
+    // This flow is now more about providing coaching based on stats
+    // than analyzing text, since we don't have transcription yet.
+    if (input.totalSpeakingTime === 0) {
+      return { interruptionAnalysis: "Start speaking to get feedback on your communication style." };
+    }
     const {output} = await prompt(input);
     return output!;
   }
