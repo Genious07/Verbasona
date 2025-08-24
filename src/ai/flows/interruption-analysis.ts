@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
 
 const InterruptionAnalysisInputSchema = z.object({
   conversationText: z
@@ -50,6 +51,7 @@ const prompt = ai.definePrompt({
   name: 'interruptionAnalysisPrompt',
   input: {schema: InterruptionAnalysisInputSchema},
   output: {schema: InterruptionAnalysisOutputSchema},
+  model: googleAI.model('gemini-1.5-flash-latest'),
   prompt: `You are an expert communication analyst. Based on the cumulative data below, provide a concise, actionable suggestion for the user.
 
   - User Speaking Time: a total of {{{userSpeakingTime}}} seconds

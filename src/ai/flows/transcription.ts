@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
 
 const TranscriptionInputSchema = z.object({
   audioDataUri: z
@@ -35,6 +36,7 @@ const prompt = ai.definePrompt({
   name: 'transcriptionPrompt',
   input: {schema: TranscriptionInputSchema},
   output: {schema: TranscriptionOutputSchema},
+  model: googleAI.model('gemini-1.5-flash-latest'),
   prompt: `You are a highly accurate audio transcription service.
 
   Transcribe the following audio data into text. If there is only silence or the audio is unclear, return an empty string.

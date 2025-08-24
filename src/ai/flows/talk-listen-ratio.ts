@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
 
 const TalkListenRatioInputSchema = z.object({
   conversationAudioDataUri: z
@@ -46,6 +47,7 @@ const prompt = ai.definePrompt({
   name: 'talkListenRatioPrompt',
   input: {schema: TalkListenRatioInputSchema},
   output: {schema: TalkListenRatioOutputSchema},
+  model: googleAI.model('gemini-1.5-flash-latest'),
   prompt: `You are an expert in analyzing conversational dynamics.
 
   You are given an audio recording of a conversation. Your goal is to determine the speaking time for the "user" (the primary speaker) and all "others".

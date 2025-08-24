@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
 
 const EmotionAnalysisInputSchema = z.object({
   audioDataUri: z
@@ -47,6 +48,7 @@ const prompt = ai.definePrompt({
   name: 'emotionAnalysisPrompt',
   input: {schema: EmotionAnalysisInputSchema},
   output: {schema: EmotionAnalysisOutputSchema},
+  model: googleAI.model('gemini-1.5-flash-latest'),
   prompt: `You are an AI expert in analyzing conversation audio to determine the emotional temperature.
 
   Analyze the provided audio data and conversation context (if available) to estimate the real-time emotional temperature.
