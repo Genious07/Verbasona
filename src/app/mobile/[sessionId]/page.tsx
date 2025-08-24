@@ -7,7 +7,7 @@ import { Mic, Square, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { database } from '@/lib/firebase';
-import { ref, update, onValue } from 'firebase/database';
+import { ref, update } from 'firebase/database';
 import type { DatabaseReference } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,7 +21,8 @@ declare global {
 
 export default function MobilePage() {
   const params = useParams();
-  const { toast } = arazs.sessionId as string;
+  const { toast } = useToast();
+  const sessionId = params.sessionId as string;
 
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
