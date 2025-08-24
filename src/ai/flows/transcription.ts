@@ -37,7 +37,7 @@ const prompt = ai.definePrompt({
   output: {schema: TranscriptionOutputSchema},
   prompt: `You are a highly accurate audio transcription service.
 
-  Transcribe the following audio data into text.
+  Transcribe the following audio data into text. If there is only silence or the audio is unclear, return an empty string.
 
   Audio Data: {{media url=audioDataUri}}
 
@@ -52,10 +52,15 @@ const transcribeAudioFlow = ai.defineFlow(
     outputSchema: TranscriptionOutputSchema,
   },
   async input => {
+    console.log('Transcribing audio chunk...');
     const {output} = await prompt(input);
-    if (!output) {
+    
+    if (!output || !output.transcription) {
+      console.log('Transcription result was empty.');
       return { transcription: '' };
     }
+    
+    console.log(`Transcription result: "${output.transcription}"`);
     return output;
   }
 );

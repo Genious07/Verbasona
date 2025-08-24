@@ -101,6 +101,8 @@ export default function MobilePage() {
           transcribeAudio({ audioDataUri: base64Audio })
         ]);
 
+        console.log("Transcription result from flow:", transcriptionResult);
+
         // Update emotion history
         const newEmotionHistory = [
           ...(currentData.emotionHistory || []),
@@ -119,7 +121,7 @@ export default function MobilePage() {
         const newUserInterruptions = currentData.interruptions.user + (Math.random() < 0.05 ? 1 : 0);
         const newOthersInterruptions = currentData.interruptions.others + (Math.random() < 0.03 ? 1 : 0);
 
-        const newTranscription = `${currentData.transcription || ''} ${transcriptionResult.transcription}`.trim();
+        const newTranscription = `${currentData.transcription || ''} ${transcriptionResult?.transcription || ''}`.trim();
 
         const updates: Partial<SessionData> = {
           emotionHistory: newEmotionHistory,
@@ -157,7 +159,7 @@ export default function MobilePage() {
         }
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorderRef.current.start(5000); // Send data every 5 seconds
       setIsRecording(true);
 
       // Reset session data
@@ -172,7 +174,7 @@ export default function MobilePage() {
       await update(sessionRef.current, initialData);
 
       // Start the analysis interval
-      analysisIntervalRef.current = setInterval(processAudioChunk, 5000); // Process every 5 seconds
+      analysisIntervalRef.current = setInterval(processAudioChunk, 5000);
 
     } catch (err) {
       console.error('Failed to start recording:', err);
