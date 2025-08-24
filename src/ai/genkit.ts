@@ -1,10 +1,13 @@
-import {genkit, GenkitError} from 'genkit';
+'use server';
+import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import {genkitPlugin, groqModel} from 'genkitx-groq';
+import {groq} from 'genkitx-groq';
 
 export const ai = genkit({
-  plugins: [googleAI(), genkitPlugin({apiKey: process.env.GROQ_API_KEY})],
-  model: 'groq/gemma-7b-it',
+  plugins: [
+    googleAI(),
+    groq({apiKey: process.env.GROQ_API_KEY}),
+  ],
   genericAuthPolicy: {
     // TODO: This should be configured to your needs.
     // see: https://firebase.google.com/docs/genkit/flow-auth#self-hosted
