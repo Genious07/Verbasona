@@ -32,7 +32,10 @@ const TalkListenRatioOutputSchema = z.object({
       'The calculated talk/listen ratio, where values > 1 indicate more talking than listening.'
     ),
   speakerTimings: z
-    .record(z.string(), z.number())
+    .object({
+      user: z.number().describe('The speaking time in seconds of the user.'),
+      others: z.number().describe('The speaking time in seconds of others.'),
+    })
     .describe('The speaking time in seconds of each speaker (e.g., user, others)'),
 });
 export type TalkListenRatioOutput = z.infer<typeof TalkListenRatioOutputSchema>;
