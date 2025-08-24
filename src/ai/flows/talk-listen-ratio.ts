@@ -61,9 +61,8 @@ const prompt = ai.definePrompt({
 
   Here is the audio data of the conversation: {{media url=conversationAudioDataUri}}
 
-  Calculate the talk/listen ratio as the total speaking time of the user divided by the total speaking time of all other participants.
   Provide the speaking time for the 'user' and 'others' in the speakerTimings object. The sum of timings should not exceed 5 seconds.
-  The talkListenRatio should be user / others, or 1 if others is 0.
+  Calculate the talkListenRatio as the total speaking time of the user divided by the total speaking time of all other participants. If others' time is 0, the ratio should be 1.
 `,
 });
 
