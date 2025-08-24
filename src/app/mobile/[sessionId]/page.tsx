@@ -7,9 +7,17 @@ import { Mic, Square, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { database } from '@/lib/firebase';
-import { ref, update, onValue } from 'firebase/database';
+import { ref, update } from 'firebase/database';
 import type { DatabaseReference } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
+
+// We need to declare this to avoid TypeScript errors for browser-specific APIs
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function MobilePage() {
   const params = useParams();
@@ -24,6 +32,15 @@ export default function MobilePage() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const sessionRef = useRef<DatabaseReference | null>(null);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  
+  // Use a ref to store the latest transcript to ensure the stop function has access to it
+  const finalTranscriptRef = useRef('');
+  
+  // Use a ref for the recording state to prevent stale closures in event handlers
+  const isRecordingRef = useRef(isRecording);
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     if (sessionId) {
@@ -36,29 +53,25 @@ export default function MobilePage() {
       });
     }
   }, [sessionId]);
-
+  
   const analyzeTranscription = useCallback(async (fullText: string) => {
-    if (!fullText.trim()) return;
+    if (!fullText.trim() || !sessionRef.current) return;
 
     setIsProcessing(true);
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcription: fullText }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze transcription');
+        throw new Error('Analysis request failed');
       }
 
       const analysisData = await response.json();
+      await update(sessionRef.current, analysisData);
 
-      if (sessionRef.current) {
-        await update(sessionRef.current, analysisData);
-      }
     } catch (err) {
       console.error('Analysis failed:', err);
       toast({
@@ -71,85 +84,102 @@ export default function MobilePage() {
     }
   }, [toast]);
 
+
   const stopRecording = useCallback(() => {
+    setIsRecording(false);
+    
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
-    setIsRecording(false);
-    if (sessionRef.current) {
-      update(sessionRef.current, { isRecording: false });
-    }
+    
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
     }
-  }, []);
+    
+    // **FIX**: Perform one final analysis on the complete transcript upon stopping.
+    analyzeTranscription(finalTranscriptRef.current);
+
+    if (sessionRef.current) {
+      update(sessionRef.current, { isRecording: false });
+    }
+  }, [analyzeTranscription]);
 
   const startRecording = useCallback(async () => {
     if (!sessionRef.current) return;
     setError(null);
-    
+    finalTranscriptRef.current = '';
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError('Speech recognition is not supported in this browser.');
+      setError('Speech recognition is not supported in this browser. Please try Chrome or Safari.');
       return;
     }
 
-    if (sessionRef.current) {
-      await update(sessionRef.current, {
-        isRecording: true,
-        transcription: '',
-        analysis: 'Starting analysis... Speak into your device.',
-        talkListenRatio: { user: 0, others: 0 },
-        interruptions: { user: 0, others: 0 },
-      });
-    }
+    await update(sessionRef.current, {
+      isRecording: true,
+      transcription: '',
+      analysis: 'Starting analysis... Speak into your device.',
+      talkListenRatio: { user: 0, others: 0 },
+      interruptions: { user: 0, others: 0 },
+    });
 
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
 
-    let finalTranscript = '';
-
-    recognitionRef.current.onresult = (event) => {
+    recognitionRef.current.onresult = (event: any) => {
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          finalTranscriptRef.current += event.results[i][0].transcript + ' ';
         } else {
           interimTranscript += event.results[i][0].transcript;
         }
       }
 
       if (sessionRef.current) {
-        update(sessionRef.current, { transcription: finalTranscript + interimTranscript });
+        update(sessionRef.current, { transcription: finalTranscriptRef.current + interimTranscript });
       }
 
       if (inactivityTimer.current) {
         clearTimeout(inactivityTimer.current);
       }
+      
       inactivityTimer.current = setTimeout(() => {
-        analyzeTranscription(finalTranscript);
-      }, 3000); // 3 seconds of inactivity
+        analyzeTranscription(finalTranscriptRef.current);
+      }, 3000); // Analyze after 3 seconds of inactivity
     };
 
-    recognitionRef.current.onerror = (event) => {
+    recognitionRef.current.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
-      setError('An error occurred during speech recognition.');
-      stopRecording();
+      if (event.error === 'no-speech') {
+        // This is a common case, we can just let it restart.
+      } else {
+        setError(`An error occurred: ${event.error}`);
+        stopRecording();
+      }
     };
     
+    // **FIX**: This handler will restart the recognition service if it stops prematurely.
     recognitionRef.current.onend = () => {
-        if (isRecording) {
-            // Restart recognition if it stops unexpectedly
-            recognitionRef.current?.start();
-        }
+      if (isRecordingRef.current) {
+        console.log("Speech recognition ended, restarting...");
+        recognitionRef.current?.start();
+      }
     };
-
 
     recognitionRef.current.start();
     setIsRecording(true);
-  }, [analyzeTranscription, stopRecording, isRecording]);
+  }, [analyzeTranscription, stopRecording]);
 
+  if (!isReady) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">Connecting to session...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
