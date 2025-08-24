@@ -120,14 +120,18 @@ export default function MobilePage() {
     // **FIX**: Correctly handle final and interim results to prevent repetition
     recognitionRef.current.onresult = (event: any) => {
       let interimTranscript = '';
-      finalTranscriptRef.current = ''; // Reset final transcript to rebuild from results
+      let finalTranscript = '';
       
-      for (let i = 0; i < event.results.length; ++i) {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscriptRef.current += event.results[i][0].transcript.trim() + ' ';
+          finalTranscript += event.results[i][0].transcript.trim() + ' ';
         } else {
           interimTranscript += event.results[i][0].transcript;
         }
+      }
+
+      if (finalTranscript) {
+        finalTranscriptRef.current += finalTranscript;
       }
       
       if (sessionRef.current) {
