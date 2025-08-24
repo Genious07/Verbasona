@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import type { EmotionDataPoint } from '@/types';
 import { Line, LineChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const chartConfig = {
   emotionalTemperature: {
@@ -27,6 +28,22 @@ interface EmotionChartProps {
 }
 
 export default function EmotionChart({ data }: EmotionChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Emotional Temperature</CardTitle>
+          <CardDescription>Real-time emotional tone of the conversation.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <div className="h-[250px] w-full flex items-center justify-center">
+                 <Skeleton className="h-full w-full" />
+            </div>
+        </CardContent>
+      </Card>
+    )
+  }
+  
   const chartData = data.map(d => ({
     time: `${d.time}s`,
     value: emotionToValue(d.emotionalTemperature),
