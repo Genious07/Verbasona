@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Mic, Square, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { SessionData, EmotionDataPoint } from '@/types';
+import { database } from '@/lib/firebase';
+import { ref, set, onValue, get } from 'firebase/database';
 
 // Mock AI analysis functions - they return plausible data structures
 const mockEmotionAnalysis = (): EmotionDataPoint['emotionalTemperature'] => {
@@ -23,8 +25,6 @@ const mockInterruptionAnalysis = (interruptions: {user: number, others: number})
     return "Your interruption patterns appear balanced. You're engaging in a healthy give-and-take dynamic in this conversation. Keep up the great work in active listening and respectful turn-taking!"
 }
 
-const getSessionKey = (sessionId: string) => `synapse-sync-session-${sessionId}`;
-
 export default function MobilePage() {
   const params = useParams();
   const sessionId = params.sessionId as string;
@@ -32,12 +32,20 @@ export default function MobilePage() {
   const [isReady, setIsReady] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeRef = useRef(0);
+  const sessionRef = useRef(null);
 
-  const updateSessionData = useCallback(() => {
-    const sessionKey = getSessionKey(sessionId);
+  useEffect(() => {
+    if(sessionId) {
+      sessionRef.current = ref(database, `sessions/${sessionId}`);
+    }
+  }, [sessionId]);
+
+  const updateSessionData = useCallback(async () => {
+    if (!sessionRef.current) return;
+
     try {
-      const storedData = localStorage.getItem(sessionKey);
-      const data: SessionData = storedData ? JSON.parse(storedData) : {
+      const snapshot = await get(sessionRef.current);
+      const data: SessionData = snapshot.exists() ? snapshot.val() : {
         isLinked: true,
         isRecording: true,
         emotionHistory: [],
@@ -68,17 +76,18 @@ export default function MobilePage() {
       
       data.analysis = mockInterruptionAnalysis(data.interruptions);
 
-      localStorage.setItem(sessionKey, JSON.stringify(data));
+      await set(sessionRef.current, data);
+
     } catch (error) {
-      console.error('Failed to update session data in localStorage', error);
+      console.error('Failed to update session data in Firebase', error);
     }
   }, [sessionId]);
 
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback(async () => {
+    if (!sessionRef.current) return;
     setIsRecording(true);
     timeRef.current = 0;
-    const sessionKey = getSessionKey(sessionId);
-
+    
     const initialData: SessionData = {
         isLinked: true,
         isRecording: true,
@@ -87,24 +96,24 @@ export default function MobilePage() {
         interruptions: { user: 0, others: 0 },
         analysis: '',
     };
-    localStorage.setItem(sessionKey, JSON.stringify(initialData));
+    await set(sessionRef.current, initialData);
 
     intervalRef.current = setInterval(updateSessionData, 2000);
   }, [sessionId, updateSessionData]);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback(async () => {
     setIsRecording(false);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-     const sessionKey = getSessionKey(sessionId);
+    if (!sessionRef.current) return;
       try {
-        const storedData = localStorage.getItem(sessionKey);
-        if (storedData) {
-            const data: SessionData = JSON.parse(storedData);
+        const snapshot = await get(sessionRef.current);
+        if (snapshot.exists()) {
+            const data: SessionData = snapshot.val();
             data.isRecording = false;
-            localStorage.setItem(sessionKey, JSON.stringify(data));
+            await set(sessionRef.current, data);
         }
       } catch (error) {
         console.error('Failed to update session data on stop', error)
@@ -112,8 +121,7 @@ export default function MobilePage() {
   }, [sessionId]);
   
   useEffect(() => {
-    if (sessionId) {
-      const sessionKey = getSessionKey(sessionId);
+    if (sessionId && sessionRef.current) {
       const initialData: SessionData = {
         isLinked: true,
         isRecording: false,
@@ -122,8 +130,9 @@ export default function MobilePage() {
         interruptions: { user: 0, others: 0 },
         analysis: '',
       };
-      localStorage.setItem(sessionKey, JSON.stringify(initialData));
-      setIsReady(true);
+       set(sessionRef.current, initialData).then(() => {
+         setIsReady(true);
+       });
     }
   }, [sessionId]);
 

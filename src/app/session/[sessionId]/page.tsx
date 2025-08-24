@@ -7,6 +7,8 @@ import Dashboard from '@/components/dashboard/dashboard';
 import type { SessionData } from '@/types';
 import { Loader2, WifiOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { database } from '@/lib/firebase';
+import { ref, onValue } from 'firebase/database';
 
 export default function SessionPage() {
   const params = useParams();
@@ -22,27 +24,51 @@ export default function SessionPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    // Polling localStorage to simulate real-time updates from mobile
-    const interval = setInterval(() => {
-      try {
-        const storedData = localStorage.getItem(`synapse-sync-session-${sessionId}`);
-        if (storedData) {
-          setSessionData(JSON.parse(storedData));
-        }
-      } catch (error) {
-        console.error('Failed to parse session data from localStorage', error);
-      }
-    }, 1000);
+    if (!sessionId) return;
 
-    return () => clearInterval(interval);
+    const sessionRef = ref(database, `sessions/${sessionId}`);
+    const unsubscribe = onValue(sessionRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setSessionData(data);
+      } else {
+        // Initialize if no data exists
+        setSessionData({
+          isLinked: false,
+          isRecording: false,
+          emotionHistory: [],
+          talkListenRatio: { user: 0, others: 0 },
+          interruptions: { user: 0, others: 0 },
+          analysis: '',
+        });
+      }
+    }, (error) => {
+      console.error('Failed to get session data from Firebase', error);
+    });
+
+    return () => unsubscribe();
   }, [sessionId]);
 
   const renderContent = () => {
-    if (!sessionData?.isLinked) {
+    if (!sessionData) {
+        return (
+             <Card className="w-full max-w-md mx-auto">
+                <CardHeader className="text-center">
+                    <CardTitle className="text-2xl font-headline">Loading Session</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center p-10 gap-4">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    <p className="text-muted-foreground">Connecting to the session...</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!sessionData.isLinked) {
       return <QrCodeDisplay url={mobileUrl} />;
     }
 
-    if (!sessionData?.isRecording) {
+    if (!sessionData.isRecording) {
       return (
         <Card className="w-full max-w-md mx-auto animate-in fade-in duration-500">
           <CardHeader className="text-center">
