@@ -101,8 +101,6 @@ export default function MobilePage() {
           transcribeAudio({ audioDataUri: base64Audio })
         ]);
 
-        console.log("Transcription result from flow:", transcriptionResult);
-
         // Update emotion history
         const newEmotionHistory = [
           ...(currentData.emotionHistory || []),
@@ -159,7 +157,7 @@ export default function MobilePage() {
         }
       };
 
-      mediaRecorderRef.current.start(5000); // Send data every 5 seconds
+      mediaRecorderRef.current.start(5000);
       setIsRecording(true);
 
       // Reset session data
@@ -174,7 +172,7 @@ export default function MobilePage() {
       await update(sessionRef.current, initialData);
 
       // Start the analysis interval
-      analysisIntervalRef.current = setInterval(processAudioChunk, 5000);
+      analysisIntervalRef.current = setInterval(processAudioChunk, 5000); // Process every 5 seconds
 
     } catch (err) {
       console.error('Failed to start recording:', err);
