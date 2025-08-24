@@ -53,16 +53,18 @@ const prompt = ai.definePrompt({
   model: googleAI.model('gemini-1.5-flash-latest'),
   prompt: `You are an expert in analyzing conversational dynamics.
 
-  You are given an audio recording of a conversation. Your goal is to determine the speaking time for the "user" (the primary speaker) and all "others".
-  Assume the audio chunk is 5 seconds long.
-  If there's only one person speaking, assume it's the user.
-  If there are multiple people, estimate the split.
-  If there is silence, both should be 0.
+  You are given a 5-second audio recording of a conversation. Your goal is to determine the speaking time for the "user" (the primary speaker) and all "others".
 
-  Here is the audio data of the conversation: {{media url=conversationAudioDataUri}}
+  Follow these rules:
+  1. If only one person is speaking, assume it's the 'user'. Assign all speaking time to 'user' and 0 to 'others'.
+  2. If multiple people are speaking, estimate the time split between 'user' and 'others'.
+  3. If there is only silence, 'user' and 'others' should both be 0.
+  4. The sum of 'user' and 'others' speaking time must not exceed 5 seconds.
+  5. Calculate the talkListenRatio as user / others. If others is 0, the ratio is 1.
 
-  Provide the speaking time for the 'user' and 'others' in the speakerTimings object. The sum of timings should not exceed 5 seconds.
-  Calculate the talkListenRatio as the total speaking time of the user divided by the total speaking time of all other participants. If others' time is 0, the ratio should be 1.
+  Here is the audio data: {{media url=conversationAudioDataUri}}
+
+  Provide the output in the format specified.
 `,
 });
 
@@ -87,8 +89,8 @@ const calculateTalkListenRatioFlow = ai.defineFlow(
     }
 
     // Ensure timings are numbers and default to 0 if not
-    const userTime = Number(output.speakerTimings['user']) || 0;
-    const othersTime = Number(output.speakerTimings['others']) || 0;
+    const userTime = Number(output.speakerTimings.user) || 0;
+    const othersTime = Number(output.speakerTimings.others) || 0;
 
     // Recalculate ratio to be safe
     const ratio = othersTime > 0 ? userTime / othersTime : 1;
