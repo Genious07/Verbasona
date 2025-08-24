@@ -4,7 +4,7 @@
 
 Verbasona is a real-time conversation analytics tool that provides insights into your communication patterns. By linking a mobile device for audio capture with a desktop dashboard, Verbasona analyzes your speech to provide metrics on your talk-to-listen ratio, interruption frequency, and the emotional tone of the conversation.
 
-## 🌟 Key Features
+##  Key Features
 
 * **Dual-Device Linking**: Seamlessly connect a mobile device and a desktop browser using a QR code. The mobile device acts as a microphone, while the desktop provides a rich data visualization dashboard.
 * **Live Transcription**: See a real-time transcript of the conversation as it happens.
@@ -15,14 +15,14 @@ Verbasona is a real-time conversation analytics tool that provides insights into
 * **Real-Time Dashboard**: A dynamic and responsive dashboard built with Next.js and Tailwind CSS to visualize all the analytics in real-time.
 
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 * **Frontend**: [Next.js](https://nextjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) for components, and [Recharts](https://recharts.org/) for data visualization.
 * **Backend**: Next.js API Routes.
 * **AI & Machine Learning**: [Groq API](https://groq.com/) with LLaMA 3 for transcription analysis.
 * **Real-Time Database**: [Firebase Realtime Database](https://firebase.google.com/docs/database) to sync data between the mobile and desktop clients instantly.
 
-## 🚀 Getting Started
+## Getting Started
 
 To get a local copy up and running, follow these simple steps.
 
