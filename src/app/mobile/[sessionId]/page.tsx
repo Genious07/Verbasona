@@ -11,7 +11,7 @@ import { ref, update } from 'firebase/database';
 import type { DatabaseReference } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
 
-// We need to declare this to avoid TypeScript errors for browser-specific APIs
+// Define the SpeechRecognition type for window
 declare global {
   interface Window {
     SpeechRecognition: any;
@@ -31,12 +31,9 @@ export default function MobilePage() {
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const sessionRef = useRef<DatabaseReference | null>(null);
-  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
   
-  // Use a ref to store the latest transcript to ensure the stop function has access to it
+  // Refs to hold the latest transcript and recording state
   const finalTranscriptRef = useRef('');
-  
-  // Use a ref for the recording state to prevent stale closures in event handlers
   const isRecordingRef = useRef(isRecording);
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -45,12 +42,12 @@ export default function MobilePage() {
   useEffect(() => {
     if (sessionId) {
       sessionRef.current = ref(database, `sessions/${sessionId}`);
-      update(sessionRef.current, { isLinked: true }).then(() => {
-        setIsReady(true);
-      }).catch(err => {
-        console.error("Failed to link device", err);
-        setError("Could not connect to the session. Please try again.");
-      });
+      update(sessionRef.current, { isLinked: true })
+        .then(() => setIsReady(true))
+        .catch(err => {
+          console.error("Failed to link device", err);
+          setError("Could not connect to the session. Please try again.");
+        });
     }
   }, [sessionId]);
   
@@ -58,6 +55,7 @@ export default function MobilePage() {
     if (!fullText.trim() || !sessionRef.current) return;
 
     setIsProcessing(true);
+    toast({ title: 'Analysis in progress...', description: 'Please wait while we process the conversation.' });
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -65,12 +63,10 @@ export default function MobilePage() {
         body: JSON.stringify({ transcription: fullText }),
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis request failed');
-      }
+      if (!response.ok) throw new Error('Analysis request failed');
 
       const analysisData = await response.json();
-      await update(sessionRef.current, analysisData);
+      await update(sessionRef.current, { ...analysisData, analysis: analysisData.analysis || "Analysis complete." });
 
     } catch (err) {
       console.error('Analysis failed:', err);
@@ -84,19 +80,13 @@ export default function MobilePage() {
     }
   }, [toast]);
 
-
   const stopRecording = useCallback(() => {
     setIsRecording(false);
-    
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
     
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-    }
-    
-    // **FIX**: Perform one final analysis on the complete transcript upon stopping.
+    // **NEW LOGIC**: Analyze the complete transcript only when stopping
     analyzeTranscription(finalTranscriptRef.current);
 
     if (sessionRef.current) {
@@ -118,7 +108,7 @@ export default function MobilePage() {
     await update(sessionRef.current, {
       isRecording: true,
       transcription: '',
-      analysis: 'Starting analysis... Speak into your device.',
+      analysis: 'Recording in progress...',
       talkListenRatio: { user: 0, others: 0 },
       interruptions: { user: 0, others: 0 },
     });
@@ -127,50 +117,41 @@ export default function MobilePage() {
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
 
+    // **FIX**: Correctly handle final and interim results to prevent repetition
     recognitionRef.current.onresult = (event: any) => {
       let interimTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      finalTranscriptRef.current = ''; // Reset final transcript to rebuild from results
+      
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscriptRef.current += event.results[i][0].transcript + ' ';
+          finalTranscriptRef.current += event.results[i][0].transcript.trim() + ' ';
         } else {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-
+      
       if (sessionRef.current) {
         update(sessionRef.current, { transcription: finalTranscriptRef.current + interimTranscript });
       }
-
-      if (inactivityTimer.current) {
-        clearTimeout(inactivityTimer.current);
-      }
-      
-      inactivityTimer.current = setTimeout(() => {
-        analyzeTranscription(finalTranscriptRef.current);
-      }, 3000); // Analyze after 3 seconds of inactivity
     };
 
     recognitionRef.current.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
-      if (event.error === 'no-speech') {
-        // This is a common case, we can just let it restart.
-      } else {
+      if (event.error !== 'no-speech') {
         setError(`An error occurred: ${event.error}`);
         stopRecording();
       }
     };
     
-    // **FIX**: This handler will restart the recognition service if it stops prematurely.
     recognitionRef.current.onend = () => {
       if (isRecordingRef.current) {
-        console.log("Speech recognition ended, restarting...");
-        recognitionRef.current?.start();
+        recognitionRef.current?.start(); // Restart if it stops unexpectedly
       }
     };
 
     recognitionRef.current.start();
     setIsRecording(true);
-  }, [analyzeTranscription, stopRecording]);
+  }, [stopRecording]);
 
   if (!isReady) {
     return (
@@ -187,7 +168,7 @@ export default function MobilePage() {
          <CardHeader>
            <Mic className={`mx-auto h-12 w-12 transition-colors ${isRecording ? 'text-destructive animate-pulse' : 'text-muted-foreground'}`} />
            <CardTitle className="text-2xl font-headline mt-4">
-             {isRecording ? (isProcessing ? 'Analyzing...' : 'Recording...') : 'Ready to Record'}
+             {isRecording ? 'Recording...' : 'Ready to Record'}
            </CardTitle>
            <CardDescription>
              {isRecording
@@ -211,11 +192,10 @@ export default function MobilePage() {
           ) : (
             <Button onClick={stopRecording} variant="destructive" size="lg" className="w-full" disabled={isProcessing}>
               {isProcessing ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analyzing...</>
               ) : (
-                <Square className="mr-2 h-5 w-5" />
+                <><Square className="mr-2 h-5 w-5" /> Stop Session</>
               )}
-              Stop Recording
             </Button>
           )}
         </CardContent>
