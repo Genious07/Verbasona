@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'SynapseSync',
+  title: 'Verbasona',
   description: 'Real-time conversation analytics',
 };
 

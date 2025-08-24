@@ -22,7 +22,7 @@ export default function Home() {
           </div>
         </div>
         <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-6xl font-headline">
-          SynapseSync
+          Verbasona
         </h1>
         <p className="max-w-xl text-lg text-muted-foreground">
           Link your devices and gain real-time insights into your conversations.

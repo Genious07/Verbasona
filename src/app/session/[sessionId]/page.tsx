@@ -127,7 +127,7 @@ export default function SessionPage() {
         <div className="flex items-center gap-3 mb-8">
              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10 text-primary p-2 rounded-full bg-primary/20"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Z"/><path d="M12 12v-4"/><path d="M12 16h.01"/></svg>
             <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl font-headline">
-            SynapseSync
+            Verbasona
             </h1>
         </div>
         <div className="w-full max-w-4xl">
