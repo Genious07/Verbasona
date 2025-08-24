@@ -8,7 +8,7 @@ import type { SessionData } from '@/types';
 import { Loader2, WifiOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { database } from '@/lib/firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, set, get } from 'firebase/database';
 
 export default function SessionPage() {
   const params = useParams();
@@ -27,23 +27,35 @@ export default function SessionPage() {
     if (!sessionId) return;
 
     const sessionRef = ref(database, `sessions/${sessionId}`);
+    
+    // Check and initialize session data if it doesn't exist.
+    get(sessionRef).then((snapshot) => {
+        if (!snapshot.exists()) {
+            const initialData: SessionData = {
+                isLinked: false,
+                isRecording: false,
+                emotionHistory: [],
+                talkListenRatio: { user: 0, others: 0 },
+                interruptions: { user: 0, others: 0 },
+                analysis: '',
+            };
+            set(sessionRef, initialData);
+        }
+    });
+
     const unsubscribe = onValue(sessionRef, (snapshot) => {
       const data = snapshot.val();
-      if (data) {
-        setSessionData(data);
-      } else {
-        // Initialize if no data exists
-        setSessionData({
+      setSessionData(data);
+    }, (error) => {
+      console.error('Failed to get session data from Firebase', error);
+       setSessionData({
           isLinked: false,
           isRecording: false,
           emotionHistory: [],
           talkListenRatio: { user: 0, others: 0 },
           interruptions: { user: 0, others: 0 },
-          analysis: '',
+          analysis: 'Error connecting to session.',
         });
-      }
-    }, (error) => {
-      console.error('Failed to get session data from Firebase', error);
     });
 
     return () => unsubscribe();

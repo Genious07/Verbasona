@@ -7,7 +7,7 @@ import { Mic, Square, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { SessionData, EmotionDataPoint } from '@/types';
 import { database } from '@/lib/firebase';
-import { ref, set, onValue, get } from 'firebase/database';
+import { ref, set, onValue, get, update } from 'firebase/database';
 
 // Mock AI analysis functions - they return plausible data structures
 const mockEmotionAnalysis = (): EmotionDataPoint['emotionalTemperature'] => {
@@ -81,25 +81,24 @@ export default function MobilePage() {
     } catch (error) {
       console.error('Failed to update session data in Firebase', error);
     }
-  }, [sessionId]);
+  }, []);
 
   const startRecording = useCallback(async () => {
     if (!sessionRef.current) return;
     setIsRecording(true);
     timeRef.current = 0;
     
-    const initialData: SessionData = {
-        isLinked: true,
+    const initialData: Partial<SessionData> = {
         isRecording: true,
         emotionHistory: [],
         talkListenRatio: { user: 0, others: 0 },
         interruptions: { user: 0, others: 0 },
         analysis: '',
     };
-    await set(sessionRef.current, initialData);
+    await update(sessionRef.current, initialData);
 
     intervalRef.current = setInterval(updateSessionData, 2000);
-  }, [sessionId, updateSessionData]);
+  }, [updateSessionData]);
 
   const stopRecording = useCallback(async () => {
     setIsRecording(false);
@@ -109,28 +108,15 @@ export default function MobilePage() {
     }
     if (!sessionRef.current) return;
       try {
-        const snapshot = await get(sessionRef.current);
-        if (snapshot.exists()) {
-            const data: SessionData = snapshot.val();
-            data.isRecording = false;
-            await set(sessionRef.current, data);
-        }
+        await update(sessionRef.current, { isRecording: false });
       } catch (error) {
         console.error('Failed to update session data on stop', error)
       }
-  }, [sessionId]);
+  }, []);
   
   useEffect(() => {
-    if (sessionId && sessionRef.current) {
-      const initialData: SessionData = {
-        isLinked: true,
-        isRecording: false,
-        emotionHistory: [],
-        talkListenRatio: { user: 0, others: 0 },
-        interruptions: { user: 0, others: 0 },
-        analysis: '',
-      };
-       set(sessionRef.current, initialData).then(() => {
+    if (sessionRef.current) {
+       update(sessionRef.current, { isLinked: true }).then(() => {
          setIsReady(true);
        });
     }
