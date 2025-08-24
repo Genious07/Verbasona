@@ -7,7 +7,8 @@ import { Mic, Square, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { SessionData, EmotionDataPoint } from '@/types';
 import { database } from '@/lib/firebase';
-import { ref, set, onValue, get, update } from 'firebase/database';
+import { ref, onValue, get, update, set } from 'firebase/database';
+import type { DatabaseReference } from 'firebase/database';
 
 // Mock AI analysis functions - they return plausible data structures
 const mockEmotionAnalysis = (): EmotionDataPoint['emotionalTemperature'] => {
@@ -32,7 +33,7 @@ export default function MobilePage() {
   const [isReady, setIsReady] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeRef = useRef(0);
-  const sessionRef = useRef(null);
+  const sessionRef = useRef<DatabaseReference | null>(null);
 
   useEffect(() => {
     if(sessionId) {
@@ -45,38 +46,50 @@ export default function MobilePage() {
 
     try {
       const snapshot = await get(sessionRef.current);
-      const data: SessionData = snapshot.exists() ? snapshot.val() : {
-        isLinked: true,
-        isRecording: true,
-        emotionHistory: [],
-        talkListenRatio: { user: 0, others: 0 },
-        interruptions: { user: 0, others: 0 },
-        analysis: '',
-      };
+      if (!snapshot.exists()) {
+        console.warn("Session data not found, stopping updates.");
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        setIsRecording(false);
+        return;
+      }
+      
+      const data: SessionData = snapshot.val();
       
       timeRef.current += 2;
 
       // Update emotion history
-      data.emotionHistory.push({
-        time: timeRef.current,
-        emotionalTemperature: mockEmotionAnalysis(),
-      });
-      if (data.emotionHistory.length > 20) {
-        data.emotionHistory.shift();
+      const newEmotionHistory = [
+        ...(data.emotionHistory || []),
+        {
+          time: timeRef.current,
+          emotionalTemperature: mockEmotionAnalysis(),
+        },
+      ];
+      if (newEmotionHistory.length > 20) {
+        newEmotionHistory.shift();
       }
 
       // Update talk/listen ratio
       const isUserSpeaking = Math.random() > 0.5;
-      data.talkListenRatio.user += isUserSpeaking ? 2 : (Math.random() * 0.5);
-      data.talkListenRatio.others += !isUserSpeaking ? 2 : (Math.random() * 0.5);
-
-      // Update interruptions
-      if (Math.random() < 0.1) data.interruptions.user++;
-      if (Math.random() < 0.08) data.interruptions.others++;
+      const newUserTalkTime = (data.talkListenRatio.user || 0) + (isUserSpeaking ? 2 : (Math.random() * 0.5));
+      const newOthersTalkTime = (data.talkListenRatio.others || 0) + (!isUserSpeaking ? 2 : (Math.random() * 0.5));
       
-      data.analysis = mockInterruptionAnalysis(data.interruptions);
+      // Update interruptions
+      const newUserInterruptions = (data.interruptions.user || 0) + (Math.random() < 0.1 ? 1 : 0);
+      const newOthersInterruptions = (data.interruptions.others || 0) + (Math.random() < 0.08 ? 1 : 0);
+      
+      const newInterruptions = { user: newUserInterruptions, others: newOthersInterruptions };
+      const newAnalysis = mockInterruptionAnalysis(newInterruptions);
 
-      await set(sessionRef.current, data);
+      const updates: Partial<SessionData> = {
+        emotionHistory: newEmotionHistory,
+        talkListenRatio: { user: newUserTalkTime, others: newOthersTalkTime },
+        interruptions: newInterruptions,
+        analysis: newAnalysis,
+        isRecording: true, // Ensure this is set
+      };
+
+      await update(sessionRef.current, updates);
 
     } catch (error) {
       console.error('Failed to update session data in Firebase', error);
@@ -93,7 +106,7 @@ export default function MobilePage() {
         emotionHistory: [],
         talkListenRatio: { user: 0, others: 0 },
         interruptions: { user: 0, others: 0 },
-        analysis: '',
+        analysis: 'Starting analysis...',
     };
     await update(sessionRef.current, initialData);
 
@@ -125,9 +138,11 @@ export default function MobilePage() {
   useEffect(() => {
     return () => {
       // Cleanup on component unmount
-      stopRecording();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
-  }, [stopRecording]);
+  }, []);
 
   if (!isReady) {
     return (
