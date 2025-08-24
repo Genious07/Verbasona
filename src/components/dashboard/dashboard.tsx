@@ -1,6 +1,5 @@
 import type { SessionData } from '@/types';
 import AnalysisCard from './analysis-card';
-import EmotionChart from './emotion-chart';
 import InterruptionCard from './interruption-card';
 import TalkListenChart from './talk-listen-chart';
 import TranscriptionCard from './transcription-card';
@@ -15,12 +14,11 @@ export default function Dashboard({ data }: DashboardProps) {
       <div className="lg:col-span-3">
          <TranscriptionCard transcription={data.transcription} />
       </div>
-      <div className="lg:col-span-2">
-        <EmotionChart data={data.emotionHistory} />
-      </div>
       <TalkListenChart data={data.talkListenRatio} />
       <InterruptionCard data={data.interruptions} />
-      <AnalysisCard analysis={data.analysis} />
+       <div className="lg:col-span-3">
+        <AnalysisCard analysis={data.analysis} />
+      </div>
     </div>
   );
 }

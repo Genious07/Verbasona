@@ -34,7 +34,6 @@ export default function SessionPage() {
         const initialData: SessionData = {
           isLinked: false,
           isRecording: false,
-          emotionHistory: [],
           talkListenRatio: { user: 0, others: 0 },
           interruptions: { user: 0, others: 0 },
           analysis: '',
@@ -60,7 +59,6 @@ export default function SessionPage() {
         setSessionData({
           isLinked: false,
           isRecording: false,
-          emotionHistory: [],
           talkListenRatio: { user: 0, others: 0 },
           interruptions: { user: 0, others: 0 },
           analysis: 'Error connecting to session.',
@@ -97,7 +95,7 @@ export default function SessionPage() {
     }
 
     // After a session is stopped, show the final dashboard.
-    if (sessionData.isRecording === false && sessionData.emotionHistory && sessionData.emotionHistory.length > 0) {
+    if (sessionData.isRecording === false && sessionData.transcription && sessionData.transcription.length > 0) {
         return (
             <Card className="w-full max-w-4xl mx-auto animate-in fade-in duration-500">
               <CardHeader className="text-center">

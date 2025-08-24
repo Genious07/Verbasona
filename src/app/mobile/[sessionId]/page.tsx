@@ -6,13 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Mic, Square, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import type { SessionData } from '@/types';
 import { database } from '@/lib/firebase';
-import { ref, get, update } from 'firebase/database';
+import { ref, update, onValue } from 'firebase/database';
 import type { DatabaseReference } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
-import { analyzeConversationChunk } from '@/ai/flows/conversation-analysis';
-
 
 export default function MobilePage() {
   const params = useParams();
@@ -24,15 +21,13 @@ export default function MobilePage() {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const sessionRef = useRef<DatabaseReference | null>(null);
-  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (sessionId) {
       sessionRef.current = ref(database, `sessions/${sessionId}`);
-      // Mark device as linked and ready
       update(sessionRef.current, { isLinked: true }).then(() => {
         setIsReady(true);
       }).catch(err => {
@@ -42,174 +37,130 @@ export default function MobilePage() {
     }
   }, [sessionId]);
 
-  const stopRecording = useCallback(async () => {
-    setIsRecording(false);
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current);
-    }
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    }
+  const analyzeTranscription = useCallback(async (fullText: string) => {
+    if (!fullText.trim()) return;
 
-    if (sessionRef.current) {
-      try {
-        await update(sessionRef.current, { isRecording: false });
-      } catch (error) {
-        console.error('Failed to update session data on stop', error);
-      }
-    }
-  }, []);
-
-  const processAudioChunk = useCallback(async () => {
-    if (audioChunksRef.current.length === 0 || !sessionRef.current) return;
     setIsProcessing(true);
-
-    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-    audioChunksRef.current = []; // Clear chunks for next interval
-
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = reader.result as string;
-        
-        const snapshot = await get(sessionRef.current!);
-        if (!snapshot.exists()) {
-          console.warn("Session data not found, stopping updates.");
-          stopRecording();
-          return;
-        }
-        const currentData: SessionData = snapshot.val();
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transcription: fullText }),
+      });
 
-        // Prepare the cumulative data for the AI flow
-        const cumulativeAnalysis = {
-            userSpeakingTime: currentData.talkListenRatio.user,
-            totalSpeakingTime: currentData.talkListenRatio.user + currentData.talkListenRatio.others,
-            userInterruptionCount: currentData.interruptions.user,
-            otherInterruptionCount: currentData.interruptions.others
-        };
+      if (!response.ok) {
+        throw new Error('Failed to analyze transcription');
+      }
 
-        // Run the single, consolidated AI analysis
-        const result = await analyzeConversationChunk({ 
-            audioDataUri: base64Audio,
-            cumulativeAnalysis
-        });
+      const analysisData = await response.json();
 
-        // Update emotion history
-        const newEmotionHistory = [
-          ...(currentData.emotionHistory || []),
-          {
-            time: ((currentData.emotionHistory?.length || 0) + 1) * 5, // Assuming 5s chunks
-            emotionalTemperature: result.emotionalTemperature,
-          },
-        ];
-        if (newEmotionHistory.length > 20) newEmotionHistory.shift();
-
-        // Update talk/listen ratio (incrementally)
-        const newUserTalkTime = currentData.talkListenRatio.user + (result.speakerTimings?.user || 0);
-        const newOthersTalkTime = currentData.talkListenRatio.others + (result.speakerTimings?.others || 0);
-        
-        // Update interruptions (incrementally, mocked for now, as real interruption detection is complex)
-        const newUserInterruptions = currentData.interruptions.user + (Math.random() < 0.05 ? 1 : 0);
-        const newOthersInterruptions = currentData.interruptions.others + (Math.random() < 0.03 ? 1 : 0);
-
-        const newTranscription = `${currentData.transcription || ''} ${result.transcription || ''}`.trim();
-
-        const updates: Partial<SessionData> = {
-          emotionHistory: newEmotionHistory,
-          talkListenRatio: { user: newUserTalkTime, others: newOthersTalkTime },
-          interruptions: { user: newUserInterruptions, others: newOthersInterruptions },
-          analysis: result.interruptionAnalysis,
-          transcription: newTranscription,
-        };
-
-        await update(sessionRef.current!, updates);
-      };
+      if (sessionRef.current) {
+        await update(sessionRef.current, analysisData);
+      }
     } catch (err) {
-      console.error('AI analysis failed:', err);
+      console.error('Analysis failed:', err);
       toast({
         variant: 'destructive',
         title: 'Analysis Error',
-        description: 'Could not analyze the last audio chunk. Please check your connection and API limits.',
+        description: 'Could not analyze the transcription.',
       });
     } finally {
       setIsProcessing(false);
     }
-  }, [toast, stopRecording]);
+  }, [toast]);
+
+  const stopRecording = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsRecording(false);
+    if (sessionRef.current) {
+      update(sessionRef.current, { isRecording: false });
+    }
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+  }, []);
 
   const startRecording = useCallback(async () => {
     if (!sessionRef.current) return;
     setError(null);
     
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError('Speech recognition is not supported in this browser.');
+      return;
+    }
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorderRef.current.start(5000);
-      setIsRecording(true);
-
-      // Reset session data
-      const initialData: Partial<SessionData> = {
+    if (sessionRef.current) {
+      await update(sessionRef.current, {
         isRecording: true,
-        emotionHistory: [],
+        transcription: '',
+        analysis: 'Starting analysis... Speak into your device.',
         talkListenRatio: { user: 0, others: 0 },
         interruptions: { user: 0, others: 0 },
-        analysis: 'Starting analysis... Speak into your device.',
-        transcription: '',
-      };
-      await update(sessionRef.current, initialData);
-
-      // Start the analysis interval
-      analysisIntervalRef.current = setInterval(processAudioChunk, 5000); // Process every 5 seconds
-
-    } catch (err) {
-      console.error('Failed to start recording:', err);
-      setError('Could not access microphone. Please check your browser permissions.');
-      toast({
-        variant: 'destructive',
-        title: 'Microphone Access Denied',
-        description: 'Please enable microphone permissions in your browser settings.',
       });
     }
-  }, [processAudioChunk, toast]);
 
-  useEffect(() => {
-    // Cleanup on unmount
-    return () => {
-      if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = true;
+
+    let finalTranscript = '';
+
+    recognitionRef.current.onresult = (event) => {
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
       }
-    };
-  }, []);
 
-  if (!isReady) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Connecting to session...</p>
-      </main>
-    );
-  }
+      if (sessionRef.current) {
+        update(sessionRef.current, { transcription: finalTranscript + interimTranscript });
+      }
+
+      if (inactivityTimer.current) {
+        clearTimeout(inactivityTimer.current);
+      }
+      inactivityTimer.current = setTimeout(() => {
+        analyzeTranscription(finalTranscript);
+      }, 3000); // 3 seconds of inactivity
+    };
+
+    recognitionRef.current.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setError('An error occurred during speech recognition.');
+      stopRecording();
+    };
+    
+    recognitionRef.current.onend = () => {
+        if (isRecording) {
+            // Restart recognition if it stops unexpectedly
+            recognitionRef.current?.start();
+        }
+    };
+
+
+    recognitionRef.current.start();
+    setIsRecording(true);
+  }, [analyzeTranscription, stopRecording, isRecording]);
+
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm text-center">
-        <CardHeader>
-          <Mic className={`mx-auto h-12 w-12 transition-colors ${isRecording ? 'text-destructive animate-pulse' : 'text-muted-foreground'}`} />
-          <CardTitle className="text-2xl font-headline mt-4">
-            {isRecording ? (isProcessing ? 'Analyzing...' : 'Recording...') : 'Ready to Record'}
-          </CardTitle>
-          <CardDescription>
-            {isRecording
+       <Card className="w-full max-w-sm text-center">
+         <CardHeader>
+           <Mic className={`mx-auto h-12 w-12 transition-colors ${isRecording ? 'text-destructive animate-pulse' : 'text-muted-foreground'}`} />
+           <CardTitle className="text-2xl font-headline mt-4">
+             {isRecording ? (isProcessing ? 'Analyzing...' : 'Recording...') : 'Ready to Record'}
+           </CardTitle>
+           <CardDescription>
+             {isRecording
               ? 'Your desktop dashboard is now live.'
               : 'Press the button to start capturing audio.'}
           </CardDescription>
