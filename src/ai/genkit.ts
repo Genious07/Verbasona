@@ -1,10 +1,10 @@
 'use server';
 import {genkit} from 'genkit';
-import {groq} from 'genkitx-groq';
+import {googleAI} from '@genkit-ai/googleai';
 
 export const ai = genkit({
   plugins: [
-    groq({apiKey: process.env.GROQ_API_KEY}),
+    googleAI(),
   ],
   genericAuthPolicy: {
     // TODO: This should be configured to your needs.
