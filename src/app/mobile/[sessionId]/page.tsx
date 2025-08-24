@@ -8,14 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { SessionData } from '@/types';
 import { database } from '@/lib/firebase';
-import { ref, onValue, get, update } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import type { DatabaseReference } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
-
-import { analyzeEmotion } from '@/ai/flows/emotion-analysis';
-import { calculateTalkListenRatio } from '@/ai/flows/talk-listen-ratio';
-import { analyzeInterruptions } from '@/ai/flows/interruption-analysis';
-import { transcribeAudio } from '@/ai/flows/transcription';
+import { analyzeConversationChunk } from '@/ai/flows/conversation-analysis';
 
 
 export default function MobilePage() {
@@ -87,45 +83,45 @@ export default function MobilePage() {
         }
         const currentData: SessionData = snapshot.val();
 
-        // Run AI analyses in parallel
-        const [emotionResult, talkListenResult, interruptionResult, transcriptionResult] = await Promise.all([
-          analyzeEmotion({ audioDataUri: base64Audio }),
-          calculateTalkListenRatio({ conversationAudioDataUri: base64Audio, speakerDiarizationData: '' }), // Diarization is mocked for now
-          analyzeInterruptions({ // This will be based on mock data for now
-            conversationText: '',
+        // Prepare the cumulative data for the AI flow
+        const cumulativeAnalysis = {
             userSpeakingTime: currentData.talkListenRatio.user,
             totalSpeakingTime: currentData.talkListenRatio.user + currentData.talkListenRatio.others,
             userInterruptionCount: currentData.interruptions.user,
             otherInterruptionCount: currentData.interruptions.others
-          }),
-          transcribeAudio({ audioDataUri: base64Audio })
-        ]);
+        };
+
+        // Run the single, consolidated AI analysis
+        const result = await analyzeConversationChunk({ 
+            audioDataUri: base64Audio,
+            cumulativeAnalysis
+        });
 
         // Update emotion history
         const newEmotionHistory = [
           ...(currentData.emotionHistory || []),
           {
             time: ((currentData.emotionHistory?.length || 0) + 1) * 5, // Assuming 5s chunks
-            emotionalTemperature: emotionResult.emotionalTemperature as any,
+            emotionalTemperature: result.emotionalTemperature,
           },
         ];
         if (newEmotionHistory.length > 20) newEmotionHistory.shift();
 
         // Update talk/listen ratio (incrementally)
-        const newUserTalkTime = currentData.talkListenRatio.user + (talkListenResult.speakerTimings['user'] || 0);
-        const newOthersTalkTime = currentData.talkListenRatio.others + (talkListenResult.speakerTimings['others'] || 0);
+        const newUserTalkTime = currentData.talkListenRatio.user + (result.speakerTimings?.user || 0);
+        const newOthersTalkTime = currentData.talkListenRatio.others + (result.speakerTimings?.others || 0);
         
-        // Update interruptions (incrementally, mocked for now)
+        // Update interruptions (incrementally, mocked for now, as real interruption detection is complex)
         const newUserInterruptions = currentData.interruptions.user + (Math.random() < 0.05 ? 1 : 0);
         const newOthersInterruptions = currentData.interruptions.others + (Math.random() < 0.03 ? 1 : 0);
 
-        const newTranscription = `${currentData.transcription || ''} ${transcriptionResult?.transcription || ''}`.trim();
+        const newTranscription = `${currentData.transcription || ''} ${result.transcription || ''}`.trim();
 
         const updates: Partial<SessionData> = {
           emotionHistory: newEmotionHistory,
           talkListenRatio: { user: newUserTalkTime, others: newOthersTalkTime },
           interruptions: { user: newUserInterruptions, others: newOthersInterruptions },
-          analysis: interruptionResult.interruptionAnalysis, // Use the latest analysis
+          analysis: result.interruptionAnalysis,
           transcription: newTranscription,
         };
 
@@ -136,7 +132,7 @@ export default function MobilePage() {
       toast({
         variant: 'destructive',
         title: 'Analysis Error',
-        description: 'Could not analyze the last audio chunk.',
+        description: 'Could not analyze the last audio chunk. Please check your connection and API limits.',
       });
     } finally {
       setIsProcessing(false);
